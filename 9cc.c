@@ -20,6 +20,40 @@ typedef struct {
 // トークナイズした結果のトークン列はこの配列に保存する
 // 100個以上のトークンは来ないものとする
 Token tokens[100];
+// 現在処理中のトークンのポジションを表す
+int pos = 0;
+
+// ノードの型を表す値
+enum {
+  ND_NUM = 256, // 整数ノードの型
+};
+
+// ノードの型
+typedef struct Node {
+  int ty;           // 演算子かND_NUM
+  struct Node *lhs; // 左辺
+  struct Node *rhs; // 右辺
+  int val;           // tyがND_NUMの場合のみ使う
+} Node;
+
+Node *new_node(int ty, Node *lhs, Node *rhs) {
+  Node *node = malloc(sizeof(Node));
+
+  node->ty = ty;
+  node->lhs = lhs;
+  node->rhs = rhs;
+
+  return node;
+}
+
+Node *new_node_num(int val) {
+  Node *node = malloc(sizeof(Node));
+
+  node->ty = ND_NUM;
+  node->val = val;
+
+  return node;
+}
 
 // エラーを報告するための関数
 // printfと同じ引数を取る
@@ -42,7 +76,8 @@ void tokenize(char *p) {
       continue;
     }
 
-    if (*p == '+' || *p == '-') {
+    // XXX: 適当に */() を足してる
+    if (*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '(' || *p == ')') {
       tokens[i].ty = *p;
       tokens[i].input = p;
 
@@ -63,11 +98,87 @@ void tokenize(char *p) {
     }
 
     error("トークナイズできません: %s", p);
-    exit(1); // TODO: これいる？？
   }
 
   tokens[i].ty = TK_EOF;
   tokens[i].input = p;
+}
+
+int consume(int ty) {
+  if (tokens[pos].ty != ty) {
+    return 0;
+  }
+
+  pos++;
+  return 1;
+}
+
+Node *add();
+
+Node *term() {
+  if (consume('(')) {
+    Node *node = add();
+    if (!consume(')')) {
+      error("開きカッコに対応するカッコがありません: %s", tokens[pos].input);
+    }
+
+    return node;
+  }
+
+  if (tokens[pos].ty == TK_NUM) {
+    return new_node_num(tokens[pos++].val);
+  }
+
+  error("数値でも開きカッコでもないトークンです: %s", tokens[pos].input);
+
+  return NULL;
+}
+
+Node *mul() {
+  Node *node = term();
+
+  for (;;) {
+    if (consume('*')) {
+      node = new_node('*', node, term());
+    } else if (consume('/')) {
+      node = new_node('/', node, term());
+    } else {
+      return node;
+    }
+  }
+}
+
+Node *add() {
+  Node *node = mul();
+
+  for (;;) {
+    if (consume('+')) {
+      node = new_node('+', node, mul());
+    } else if (consume('-')) {
+      node = new_node('-', node, mul());
+    } else {
+      return node;
+    }
+  }
+}
+
+// シンタックスツリーのデバッグプリント用関数
+void print_node(Node *node, int level) {
+  if (node->lhs)
+    print_node(node->lhs, level + 1);
+  if (node->rhs)
+    print_node(node->rhs, level + 1);
+
+  printf("# ");
+  for(int i = 0; i < level*4; i++) {
+    printf(" ");
+  }
+  if (node->ty == ND_NUM) {
+    printf("%d", node->val);
+  } else {
+    printf("%c", node->ty);
+  }
+  printf("\n");
 }
 
 int main(int argc, char **argv) {
@@ -78,6 +189,9 @@ int main(int argc, char **argv) {
   }
 
   tokenize(argv[1]);
+  Node *node;
+  node = add();
+  print_node(node, 0);
 
   printf(".intel_syntax noprefix\n");
   printf(".global main\n");
