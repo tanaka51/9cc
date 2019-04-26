@@ -181,6 +181,38 @@ void print_node(Node *node, int level) {
   printf("\n");
 }
 
+void gen(Node *node) {
+  if (node->ty == ND_NUM) {
+    printf("  push %d\n", node->val);
+
+    return;
+  }
+
+  gen(node->lhs);
+  gen(node->rhs);
+
+  printf("  pop rdi\n");
+  printf("  pop rax\n");
+
+  switch (node->ty) {
+    case '+':
+      printf("  add rax, rdi\n");
+      break;
+    case '-':
+      printf("  sub rax, rdi\n");
+      break;
+    case '*':
+      printf(" mul rdi\n");
+      break;
+    case '/':
+      printf("  mov rdx, 0\n");
+      printf("  div rdi\n");
+      break;
+  }
+
+  printf("  push rax\n");
+}
+
 int main(int argc, char **argv) {
   if (argc != 2) {
     fprintf(stderr, "引数の数が正しくありません\n");
@@ -189,48 +221,20 @@ int main(int argc, char **argv) {
   }
 
   tokenize(argv[1]);
-  Node *node;
-  node = add();
-  print_node(node, 0);
+  Node *node = add();
+  print_node(node, 0); // debug
 
+  // アセンブリの前半部分を出力
   printf(".intel_syntax noprefix\n");
   printf(".global main\n");
   printf("main:\n");
 
-  // 式の最初は数でなければならないので、それをチェックして
-  // 最初のmov命令を出力
-  if (tokens[0].ty != TK_NUM) {
-    error("最初の項が数ではありません");
-  }
-  printf("  mov rax, %d\n", tokens[0].val);
+  // 抽象構文木を下りながらコード生成
+  gen(node);
 
-  // `+ <数>`あるいは`- <数>`というトークンの並びを消費しつつ
-  // アセンプリを出力
-  int i = 1;
-  while (tokens[i].ty != TK_EOF) {
-    if (tokens[i].ty == '+') {
-      i++;
-      if (tokens[i].ty != TK_NUM) {
-        error("予期しないトークンです: %s", tokens[i].input);
-      }
-      printf("  add rax, %d\n", tokens[i].val);
-      i++;
-      continue;
-    }
-
-    if (tokens[i].ty == '-') {
-      i++;
-      if (tokens[i].ty != TK_NUM) {
-        error("予期しないトークンです: %s", tokens[i].input);
-      }
-      printf("  sub rax, %d\n", tokens[i].val);
-      i++;
-      continue;
-    }
-
-    error("予期しないトークンです: %s", tokens[i].input);
-  }
-
+  // スタックトップに式全体の値が残っているはずなので
+  // それをRAXにロードして関数からの返り値とする
+  printf("  pop rax\n");
   printf("  ret\n");
 
   return 0;
