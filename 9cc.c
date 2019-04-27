@@ -43,8 +43,7 @@ typedef struct {
 } Token;
 
 // トークナイズした結果のトークン列はこの配列に保存する
-// 100個以上のトークンは来ないものとする
-Token tokens[100];
+Vector *tokens;
 // 現在処理中のトークンのポジションを表す
 int pos = 0;
 
@@ -92,8 +91,6 @@ void error(char *fmt, ...) {
 
 // pが指している文字列をトークンに分割してtokensに保存する
 void tokenize(char *p) {
-  int i = 0;
-
   while (*p) {
     // 空白文字をスキップ
     if (isspace(*p)) {
@@ -103,21 +100,24 @@ void tokenize(char *p) {
 
     // XXX: 適当に */() を足してる
     if (*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '(' || *p == ')') {
-      tokens[i].ty = *p;
-      tokens[i].input = p;
+      Token *token = malloc(sizeof(Token));
+      token->ty = *p;
+      token->input = p;
 
-      i++;
+      vec_push(tokens, token);
+
       p++;
 
       continue;
     }
 
     if (isdigit(*p)) {
-      tokens[i].ty = TK_NUM;
-      tokens[i].input = p;
-      tokens[i].val = strtol(p, &p, 10);
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_NUM;
+      token->input = p;
+      token->val = strtol(p, &p, 10);
 
-      i++;
+      vec_push(tokens, token);
 
       continue;
     }
@@ -125,12 +125,15 @@ void tokenize(char *p) {
     error("トークナイズできません: %s", p);
   }
 
-  tokens[i].ty = TK_EOF;
-  tokens[i].input = p;
+  Token *token = malloc(sizeof(Token));
+  token->ty = TK_EOF;
+  token->input = p;
+
+  vec_push(tokens, token);
 }
 
 int consume(int ty) {
-  if (tokens[pos].ty != ty) {
+  if (((Token *)tokens->data[pos])->ty != ty) {
     return 0;
   }
 
@@ -144,17 +147,17 @@ Node *term() {
   if (consume('(')) {
     Node *node = add();
     if (!consume(')')) {
-      error("開きカッコに対応するカッコがありません: %s", tokens[pos].input);
+      error("開きカッコに対応するカッコがありません: %s", ((Token *)tokens->data[pos])->input);
     }
 
     return node;
   }
 
-  if (tokens[pos].ty == TK_NUM) {
-    return new_node_num(tokens[pos++].val);
+  if (((Token *)tokens->data[pos])->ty == TK_NUM) {
+    return new_node_num(((Token *)tokens->data[pos++])->val);
   }
 
-  error("数値でも開きカッコでもないトークンです: %s", tokens[pos].input);
+  error("数値でも開きカッコでもないトークンです: %s", ((Token *)tokens->data[pos])->input);
 
   return NULL;
 }
@@ -282,6 +285,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  tokens = new_vector();
   tokenize(argv[1]);
   Node *node = add();
   print_node(node, 0); // debug
