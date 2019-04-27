@@ -32,6 +32,7 @@ void vec_push(Vector *vec, void *elem) {
 // トークンの型を表す値
 enum {
   TK_NUM = 256, // 整数トークン
+  TK_IDENT,     // 識別子
   TK_EOF,       // 入力の終わりを表すトークン
 };
 
@@ -50,6 +51,7 @@ int pos = 0;
 // ノードの型を表す値
 enum {
   ND_NUM = 256, // 整数ノードの型
+  ND_IDENT,     // 識別子のノードの型
 };
 
 // ノードの型
@@ -57,7 +59,8 @@ typedef struct Node {
   int ty;           // 演算子かND_NUM
   struct Node *lhs; // 左辺
   struct Node *rhs; // 右辺
-  int val;           // tyがND_NUMの場合のみ使う
+  int val;          // tyがND_NUMの場合のみ使う
+  char name;        // tyがND_IDENTの場合のみ使う
 } Node;
 
 Node *new_node(int ty, Node *lhs, Node *rhs) {
@@ -98,10 +101,21 @@ void tokenize(char *p) {
       continue;
     }
 
-    // XXX: 適当に */() を足してる
-    if (*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '(' || *p == ')') {
+    if (*p == '+' || *p == '-' || *p == '*' || *p == '/' || *p == '(' || *p == ')' || *p == ';') {
       Token *token = malloc(sizeof(Token));
       token->ty = *p;
+      token->input = p;
+
+      vec_push(tokens, token);
+
+      p++;
+
+      continue;
+    }
+
+    if ('a' <= *p && *p <= 'z') {
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_IDENT;
       token->input = p;
 
       vec_push(tokens, token);
@@ -140,6 +154,8 @@ int consume(int ty) {
   pos++;
   return 1;
 }
+
+Node *code[100];
 
 Node *add();
 
@@ -188,6 +204,36 @@ Node *add() {
       return node;
     }
   }
+}
+
+Node *assign() {
+  Node *node = add();
+
+  while (consume('=')) {
+    node = new_node('=', node, assign());
+  }
+
+  return node;
+}
+
+Node *stmt() {
+  Node *node = assign();
+
+  if (!consume(';')) {
+    error("';'ではないトークンです: %s\n", ((Token *)tokens->data[pos])->input);
+  }
+
+  return node;
+}
+
+void program() {
+  int i = 0;
+
+  while (((Token *)tokens->data[pos])->ty != TK_EOF) {
+    code[i++] = stmt();
+  }
+
+  code[i] = NULL;
 }
 
 // シンタックスツリーのデバッグプリント用関数
@@ -287,8 +333,9 @@ int main(int argc, char **argv) {
 
   tokens = new_vector();
   tokenize(argv[1]);
-  Node *node = add();
-  print_node(node, 0); // debug
+  program();
+  /* Node *node = add(); */
+  /* print_node(node, 0); // debug */
 
   // アセンブリの前半部分を出力
   printf(".intel_syntax noprefix\n");
@@ -296,7 +343,7 @@ int main(int argc, char **argv) {
   printf("main:\n");
 
   // 抽象構文木を下りながらコード生成
-  gen(node);
+  gen(code[0]);
 
   // スタックトップに式全体の値が残っているはずなので
   // それをRAXにロードして関数からの返り値とする
