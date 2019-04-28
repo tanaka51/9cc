@@ -40,6 +40,12 @@ void vec_push(Vector *vec, void *elem) {
 enum {
   TK_NUM = 256, // 整数トークン
   TK_IDENT,     // 識別子
+  TK_EQ,        // == (equal)
+  TK_NE,        // != (not equal)
+  TK_LT,        // <  (less than)
+  TK_LE,        // <= (less than or equal)
+  TK_GT,        // >  (greater than)
+  TK_GE,        // >= (greater than or equal)
   TK_RETURN,    // return
   TK_EOF,       // 入力の終わりを表すトークン
 };
@@ -61,6 +67,10 @@ int pos = 0;
 enum {
   ND_NUM = 256, // 整数ノードの型
   ND_IDENT,     // 識別子のノードの型
+  ND_EQ,        // == (equal)
+  ND_NE,        // != (not equal)
+  ND_LT,        // <  (less than)
+  ND_LE,        // <= (less than or equal)
   ND_RETURN,    // returnノードの型
 };
 
@@ -117,6 +127,79 @@ void tokenize(char *p) {
     // 空白文字をスキップ
     if (isspace(*p)) {
       p++;
+      continue;
+    }
+
+    if (strncmp(p, "==", 2) == 0) {
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_EQ;
+      token->input = p;
+
+      vec_push(tokens, token);
+
+      p += 2;
+
+      continue;
+    }
+
+    if (strncmp(p, "!=", 2) == 0) {
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_NE;
+      token->input = p;
+
+      vec_push(tokens, token);
+
+      p += 2;
+
+      continue;
+    }
+
+    if (strncmp(p, "<=", 2) == 0) {
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_LE;
+      token->input = p;
+
+      vec_push(tokens, token);
+
+      p += 2;
+
+      continue;
+    }
+
+
+    if (strncmp(p, ">=", 2) == 0) {
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_GE;
+      token->input = p;
+
+      vec_push(tokens, token);
+
+      p += 2;
+
+      continue;
+    }
+
+    if (strncmp(p, "<", 1) == 0) {
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_LT;
+      token->input = p;
+
+      vec_push(tokens, token);
+
+      p++;
+
+      continue;
+    }
+
+    if (strncmp(p, ">", 1) == 0) {
+      Token *token = malloc(sizeof(Token));
+      token->ty = TK_GT;
+      token->input = p;
+
+      vec_push(tokens, token);
+
+      p++;
+
       continue;
     }
 
@@ -253,8 +336,40 @@ Node *add() {
   }
 }
 
-Node *assign() {
+Node *relational() {
   Node *node = add();
+
+  for (;;) {
+    if (consume(TK_LT)) {
+      node = new_node(ND_LT, node, add());
+    } else if (consume(TK_LE)) {
+      node = new_node(ND_LE, node, add());
+    } else if (consume(TK_GT)) {
+      node = new_node(ND_LT, add(), node);
+    } else if (consume(TK_GE)) {
+      node = new_node(ND_LE, add(), node);
+    } else {
+      return node;
+    }
+  }
+}
+
+Node *equality() {
+  Node *node = relational();
+
+  for (;;) {
+    if (consume(TK_EQ)) {
+      node = new_node(ND_EQ, node, relational());
+    } else if (consume(TK_NE)) {
+      node = new_node(ND_NE, node, relational());
+    } else {
+      return node;
+    }
+  }
+}
+
+Node *assign() {
+  Node *node = equality();
 
   while (consume('=')) {
     node = new_node('=', node, assign());
@@ -383,6 +498,26 @@ void gen(Node *node) {
     case '/':
       printf("  mov rdx, 0\n");
       printf("  div rdi\n");
+      break;
+    case ND_EQ:
+      printf("  cmp rax, rdi\n");
+      printf("  sete al\n");
+      printf("  movzb rax, al\n");
+      break;
+    case ND_NE:
+      printf("  cmp rax, rdi\n");
+      printf("  setne al\n");
+      printf("  movzb rax, al\n");
+      break;
+    case ND_LT:
+      printf("  cmp rax, rdi\n");
+      printf("  setl al\n");
+      printf("  movzb rax, al\n");
+      break;
+    case ND_LE:
+      printf("  cmp rax, rdi\n");
+      printf("  setle al\n");
+      printf("  movzb rax, al\n");
       break;
   }
 
